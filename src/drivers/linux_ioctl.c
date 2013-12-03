@@ -14,6 +14,62 @@
 #include "utils/common.h"
 #include "linux_ioctl.h"
 
+#define OPENVSWITCH
+#ifdef OPENVSWITCH
+#include <sys/wait.h>
+
+#define run_prog(p, ...) ({ \
+        int rc = -1, status; \
+        pid_t pid = fork(); \
+        if (!pid) \
+                exit(execl(p, p, ##__VA_ARGS__, NULL)); \
+        if (pid < 0) {\
+                rc = -1;\
+        } else {\
+                while ((rc = waitpid(pid, &status, 0)) == -1 && errno == EINTR); \
+		rc = (rc == pid && WIFEXITED(status)) ? WEXITSTATUS(status) : -1; \
+        }\
+        rc;\
+})
+
+int ovs_br_get(char *brname, const char *ifname)
+{
+	FILE *f;
+	char cmd[64];
+	char *c;
+
+	brname[0] = '\0';
+
+	sprintf(cmd, "/usr/bin/ovs-vsctl iface-to-br %s", ifname);
+	f = popen(cmd, "r");
+	if (!f)
+		return -1;
+	c = fgets(brname, IFNAMSIZ, f);
+	pclose(f);
+	if (c && strlen(brname)) {
+		/* Ignore newline */
+		if ((c = strchr(brname, '\n')))
+			*c = '\0';
+		return 0;
+	}
+	return -1;
+}
+
+int ovs_br_add_if(const char *brname, const char *ifname)
+{
+	if (run_prog("/usr/bin/ovs-vsctl", "add-port", brname, ifname))
+		return -1;
+	return 0;
+}
+
+int ovs_br_del_if(const char *brname, const char *ifname)
+{
+	if (run_prog("/usr/bin/ovs-vsctl", "del-port", brname, ifname))
+		return -1;
+	return 0;
+}
+
+#endif
 
 int linux_set_iface_flags(int sock, const char *ifname, int dev_up)
 {
@@ -118,7 +174,6 @@ int linux_set_ifhwaddr(int sock, const char *ifname, const u8 *addr)
 	return 0;
 }
 
-
 #ifndef SIOCBRADDBR
 #define SIOCBRADDBR 0x89a0
 #endif
@@ -162,6 +217,9 @@ int linux_br_add_if(int sock, const char *brname, const char *ifname)
 	struct ifreq ifr;
 	int ifindex;
 
+	if (!ovs_br_add_if(brname, ifname))
+		return 0;
+
 	ifindex = if_nametoindex(ifname);
 	if (ifindex == 0)
 		return -1;
@@ -183,6 +241,9 @@ int linux_br_del_if(int sock, const char *brname, const char *ifname)
 {
 	struct ifreq ifr;
 	int ifindex;
+
+	if (!ovs_br_del_if(brname, ifname))
+		return 0;
 
 	ifindex = if_nametoindex(ifname);
 	if (ifindex == 0)
@@ -206,6 +267,9 @@ int linux_br_get(char *brname, const char *ifname)
 	char path[128], brlink[128], *pos;
 	ssize_t res;
 
+	if (!ovs_br_get(brname, ifname))
+		return 0;
+
 	os_snprintf(path, sizeof(path), "/sys/class/net/%s/brport/bridge",
 		    ifname);
 	res = readlink(path, brlink, sizeof(brlink));
@@ -219,3 +283,4 @@ int linux_br_get(char *brname, const char *ifname)
 	os_strlcpy(brname, pos, IFNAMSIZ);
 	return 0;
 }
+
