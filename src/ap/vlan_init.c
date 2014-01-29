@@ -933,7 +933,7 @@ static int vlan_dynamic_add(struct hostapd_data *hapd,
 {
 	while (vlan) {
 		if (vlan->vlan_id != VLAN_ID_WILDCARD) {
-			if (hostapd_vlan_if_add(hapd, vlan->ifname)) {
+			if (hostapd_vlan_if_add(hapd, vlan->ifname, vlan->bridge[0] == '\0' ? NULL : vlan->bridge)) {
 				if (errno != EEXIST) {
 					wpa_printf(MSG_ERROR, "VLAN: Could "
 						   "not add VLAN %s: %s",
@@ -1055,8 +1055,8 @@ struct hostapd_vlan * vlan_add_dynamic(struct hostapd_data *hapd,
 	os_snprintf(n->ifname, sizeof(n->ifname), "%s%d%s", ifname, vlan_id,
 		    pos);
 	os_free(ifname);
-
-	if (hostapd_vlan_if_add(hapd, n->ifname)) {
+/*FIXME: Add bridge support*/
+	if (hostapd_vlan_if_add(hapd, n->ifname, NULL)) {
 		os_free(n);
 		return NULL;
 	}

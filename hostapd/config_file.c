@@ -27,7 +27,7 @@ static int hostapd_config_read_vlan_file(struct hostapd_bss_config *bss,
 					 const char *fname)
 {
 	FILE *f;
-	char buf[128], *pos, *pos2;
+	char buf[128], *pos, *ifname, *bridge;
 	int line = 0, vlan_id;
 	struct hostapd_vlan *vlan;
 
@@ -40,26 +40,15 @@ static int hostapd_config_read_vlan_file(struct hostapd_bss_config *bss,
 	while (fgets(buf, sizeof(buf), f)) {
 		line++;
 
-		if (buf[0] == '#')
-			continue;
-		pos = buf;
-		while (*pos != '\0') {
-			if (*pos == '\n') {
-				*pos = '\0';
-				break;
-			}
-			pos++;
-		}
-		if (buf[0] == '\0')
+		if (buf[0] == '#' || buf[0] == '\0') 
 			continue;
 
-		if (buf[0] == '*') {
+		pos = strtok(buf, " \t\n");
+		if (pos[0] == '*') {
 			vlan_id = VLAN_ID_WILDCARD;
-			pos = buf + 1;
 		} else {
-			vlan_id = strtol(buf, &pos, 10);
-			if (buf == pos || vlan_id < 1 ||
-			    vlan_id > MAX_VLAN_ID) {
+			vlan_id = strtol(pos, NULL, 10);
+			if (vlan_id < 1 || vlan_id > MAX_VLAN_ID) {
 				wpa_printf(MSG_ERROR, "Invalid VLAN ID at "
 					   "line %d in '%s'", line, fname);
 				fclose(f);
@@ -67,18 +56,23 @@ static int hostapd_config_read_vlan_file(struct hostapd_bss_config *bss,
 			}
 		}
 
-		while (*pos == ' ' || *pos == '\t')
-			pos++;
-		pos2 = pos;
-		while (*pos2 != ' ' && *pos2 != '\t' && *pos2 != '\0')
-			pos2++;
-		*pos2 = '\0';
-		if (*pos == '\0' || os_strlen(pos) > IFNAMSIZ) {
+		pos = strtok(NULL, " \t\n");
+		if (!pos || os_strlen(pos) > IFNAMSIZ) {
 			wpa_printf(MSG_ERROR, "Invalid VLAN ifname at line %d "
 				   "in '%s'", line, fname);
 			fclose(f);
 			return -1;
 		}
+		ifname = pos;
+
+		pos = strtok(NULL, " \t\n");
+		if (pos && os_strlen(pos) > IFNAMSIZ) {
+			wpa_printf(MSG_ERROR, "Invalid VLAN bridge at line %d "
+				   "in '%s'", line, fname);
+			fclose(f);
+			return -1;
+		}
+		bridge = pos;
 
 		vlan = os_zalloc(sizeof(*vlan));
 		if (vlan == NULL) {
@@ -89,7 +83,9 @@ static int hostapd_config_read_vlan_file(struct hostapd_bss_config *bss,
 		}
 
 		vlan->vlan_id = vlan_id;
-		os_strlcpy(vlan->ifname, pos, sizeof(vlan->ifname));
+		os_strlcpy(vlan->ifname, ifname, sizeof(vlan->ifname));
+		if (bridge)
+			os_strlcpy(vlan->bridge, bridge, sizeof(vlan->bridge));
 		vlan->next = bss->vlan;
 		bss->vlan = vlan;
 	}

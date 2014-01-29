@@ -30,7 +30,8 @@ int hostapd_set_authorized(struct hostapd_data *hapd,
 int hostapd_set_sta_flags(struct hostapd_data *hapd, struct sta_info *sta);
 int hostapd_set_drv_ieee8021x(struct hostapd_data *hapd, const char *ifname,
 			      int enabled);
-int hostapd_vlan_if_add(struct hostapd_data *hapd, const char *ifname);
+int hostapd_vlan_if_add(struct hostapd_data *hapd, const char *ifname,
+			const char *bridge);
 int hostapd_vlan_if_remove(struct hostapd_data *hapd, const char *ifname);
 int hostapd_set_wds_sta(struct hostapd_data *hapd, char *ifname_wds,
 			const u8 *addr, int aid, int val);

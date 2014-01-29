@@ -1,8 +1,8 @@
 # VLAN ID to network interface mapping
-1	vlan1
-2	vlan2
-3	vlan3
-100	guest
+1	vlan1 br1
+2	vlan2 br2
+3	vlan3 br3
+100	guest br4
 # Optional wildcard entry matching all VLAN IDs. The first # in the interface
 # name will be replaced with the VLAN ID. The network interfaces are created
 # (and removed) dynamically based on the use.
