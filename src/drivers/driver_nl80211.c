@@ -218,19 +218,23 @@ struct nl80211_wiphy_data {
 
 static void nl80211_global_deinit(void *priv);
 
+struct i802_bridge {
+	char brname[IFNAMSIZ];
+	unsigned int added_if_into_bridge:1;
+	unsigned int added_bridge:1;
+};
+
 struct i802_bss {
 	struct wpa_driver_nl80211_data *drv;
 	struct i802_bss *next;
 	int ifindex;
 	u64 wdev_id;
 	char ifname[IFNAMSIZ + 1];
-	char brname[IFNAMSIZ];
 	unsigned int beacon_set:1;
-	unsigned int added_if_into_bridge:1;
-	unsigned int added_bridge:1;
 	unsigned int in_deinit:1;
 	unsigned int wdev_id_set:1;
 	unsigned int added_if:1;
+	struct i802_bridge bridge;
 
 	u8 addr[ETH_ALEN];
 
@@ -4652,18 +4656,18 @@ static void wpa_driver_nl80211_deinit(struct i802_bss *bss)
 
 	if (bss->nl_preq)
 		wpa_driver_nl80211_probe_req_report(bss, 0);
-	if (bss->added_if_into_bridge) {
-		if (linux_br_del_if(drv->global->ioctl_sock, bss->brname,
+	if (bss->bridge.added_if_into_bridge) {
+		if (linux_br_del_if(drv->global->ioctl_sock, bss->bridge.brname,
 				    bss->ifname) < 0)
 			wpa_printf(MSG_INFO, "nl80211: Failed to remove "
 				   "interface %s from bridge %s: %s",
-				   bss->ifname, bss->brname, strerror(errno));
+				   bss->ifname, bss->bridge.brname, strerror(errno));
 	}
-	if (bss->added_bridge) {
-		if (linux_br_del(drv->global->ioctl_sock, bss->brname) < 0)
+	if (bss->bridge.added_bridge) {
+		if (linux_br_del(drv->global->ioctl_sock, bss->bridge.brname) < 0)
 			wpa_printf(MSG_INFO, "nl80211: Failed to remove "
 				   "bridge %s: %s",
-				   bss->brname, strerror(errno));
+				   bss->bridge.brname, strerror(errno));
 	}
 
 	nl80211_remove_monitor_interface(drv);
@@ -9335,13 +9339,13 @@ static void handle_eapol(int sock, void *eloop_ctx, void *sock_ctx)
 
 
 static int i802_check_bridge(struct wpa_driver_nl80211_data *drv,
-			     struct i802_bss *bss,
+			     struct i802_bridge *bridge,
 			     const char *brname, const char *ifname)
 {
 	int ifindex;
 	char in_br[IFNAMSIZ];
 
-	os_strlcpy(bss->brname, brname, IFNAMSIZ);
+	os_strlcpy(bridge->brname, brname, IFNAMSIZ);
 	ifindex = if_nametoindex(brname);
 	if (ifindex == 0) {
 		/*
@@ -9354,7 +9358,7 @@ static int i802_check_bridge(struct wpa_driver_nl80211_data *drv,
 				   brname, strerror(errno));
 			return -1;
 		}
-		bss->added_bridge = 1;
+		bridge->added_bridge = 1;
 		add_ifidx(drv, if_nametoindex(brname));
 	}
 
@@ -9382,7 +9386,7 @@ static int i802_check_bridge(struct wpa_driver_nl80211_data *drv,
 			   ifname, brname, strerror(errno));
 		return -1;
 	}
-	bss->added_if_into_bridge = 1;
+	bridge->added_if_into_bridge = 1;
 
 	return 0;
 }
@@ -9432,7 +9436,7 @@ static void *i802_init(struct hostapd_data *hapd,
 	add_ifidx(drv, drv->ifindex);
 
 	if (params->num_bridge && params->bridge[0] &&
-	    i802_check_bridge(drv, bss, params->bridge[0], params->ifname) < 0)
+	    i802_check_bridge(drv, &bss->bridge, params->bridge[0], params->ifname) < 0)
 		goto failed;
 
 	drv->eapol_sock = socket(PF_PACKET, SOCK_DGRAM, htons(ETH_P_PAE));
@@ -9654,7 +9658,7 @@ static int wpa_driver_nl80211_if_add(void *priv, enum wpa_driver_if_type type,
 		}
 
 		if (bridge &&
-		    i802_check_bridge(drv, new_bss, bridge, ifname) < 0) {
+		    i802_check_bridge(drv, &new_bss->bridge, bridge, ifname) < 0) {
 			wpa_printf(MSG_ERROR, "nl80211: Failed to add the new "
 				   "interface %s to a bridge %s",
 				   ifname, bridge);
@@ -9710,18 +9714,18 @@ static int wpa_driver_nl80211_if_remove(struct i802_bss *bss,
 	if (type != WPA_IF_AP_BSS)
 		return 0;
 
-	if (bss->added_if_into_bridge) {
-		if (linux_br_del_if(drv->global->ioctl_sock, bss->brname,
+	if (bss->bridge.added_if_into_bridge) {
+		if (linux_br_del_if(drv->global->ioctl_sock, bss->bridge.brname,
 				    bss->ifname) < 0)
 			wpa_printf(MSG_INFO, "nl80211: Failed to remove "
 				   "interface %s from bridge %s: %s",
-				   bss->ifname, bss->brname, strerror(errno));
+				   bss->ifname, bss->bridge.brname, strerror(errno));
 	}
-	if (bss->added_bridge) {
-		if (linux_br_del(drv->global->ioctl_sock, bss->brname) < 0)
+	if (bss->bridge.added_bridge) {
+		if (linux_br_del(drv->global->ioctl_sock, bss->bridge.brname) < 0)
 			wpa_printf(MSG_INFO, "nl80211: Failed to remove "
 				   "bridge %s: %s",
-				   bss->brname, strerror(errno));
+				   bss->bridge.brname, strerror(errno));
 	}
 
 	if (bss != drv->first_bss) {
@@ -11338,13 +11342,13 @@ static int wpa_driver_nl80211_status(void *priv, char *buf, size_t buflen)
 			  "%s%s%s%s%s",
 			  bss->ifindex,
 			  bss->ifname,
-			  bss->brname,
+			  bss->bridge.brname,
 			  MAC2STR(bss->addr),
 			  bss->freq,
 			  bss->beacon_set ? "beacon_set=1\n" : "",
-			  bss->added_if_into_bridge ?
+			  bss->bridge.added_if_into_bridge ?
 			  "added_if_into_bridge=1\n" : "",
-			  bss->added_bridge ? "added_bridge=1\n" : "",
+			  bss->bridge.added_bridge ? "added_bridge=1\n" : "",
 			  bss->in_deinit ? "in_deinit=1\n" : "",
 			  bss->if_dynamic ? "if_dynamic=1\n" : "");
 	if (res < 0 || res >= end - pos)
