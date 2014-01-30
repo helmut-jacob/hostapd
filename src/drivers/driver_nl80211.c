@@ -9649,6 +9649,19 @@ static int wpa_driver_nl80211_if_add(void *priv, enum wpa_driver_if_type type,
 	}
 #endif /* CONFIG_P2P */
 
+	if (type == WPA_IF_AP_VLAN) {
+		struct i802_bridge x;
+		if (bridge &&
+		    i802_check_bridge(drv, &x, bridge, ifname) < 0) {
+			wpa_printf(MSG_ERROR, "nl80211: Failed to add the new "
+				   "interface %s to a bridge %s",
+				   ifname, bridge);
+			if (added)
+				nl80211_remove_iface(drv, ifidx);
+			return -1;
+		}
+	}
+
 	if (type == WPA_IF_AP_BSS) {
 		struct i802_bss *new_bss = os_zalloc(sizeof(*new_bss));
 		if (new_bss == NULL) {
